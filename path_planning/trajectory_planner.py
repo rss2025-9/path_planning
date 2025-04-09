@@ -6,6 +6,11 @@ from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray
 from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory
 
+import numpy as np
+import math
+import random
+
+
 
 class PathPlan(Node):
     """ Listens for goal pose published by RViz and uses it to plan a path from
@@ -25,7 +30,7 @@ class PathPlan(Node):
         self.map_sub = self.create_subscription(
             OccupancyGrid,
             self.map_topic,
-            self.map_cb,
+            self.map_callback,
             1)
 
         self.goal_sub = self.create_subscription(
@@ -50,18 +55,133 @@ class PathPlan(Node):
 
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
 
-    def map_cb(self, msg):
-        raise NotImplementedError
+        ##
+        self.map = None
+        self.resolution = None
+        self.origin = None
+        self.start = None
+        self.goal = None
+        ##
 
-    def pose_cb(self, pose):
-        raise NotImplementedError
+
+    ## given callback funcs implemented
+    def map_cb(self, msg):
+        """stores occupancy grid  """
+        self.map=np.array(msg.data).reshape((msg.info.height, msg.info.width))
+        self.map_resolution=msg.info.resolution
+        self.map_origin=msg.info.origin.position
+
 
     def goal_cb(self, msg):
-        raise NotImplementedError
+        """callback for goal pose. calls the planning to start """
+        self.goal_pose = msg.pose
 
-    def plan_path(self, start_point, end_point, map):
+        if self.start_pose and self.map is not None: #calls path plan
+            self.plan_path(self.start_pose, self.goal_pose)
+
+
+
+
+    def pose_cb(self, pose):
+        """callback for initial pose estimate """
+        self.start_pose=pose.pose.pose
+
+    ######## my functions below here
+
+    def w_to_m(self, x, y):
+        """ world coordinates to map coordinates"""
+        return (int((x-self.map_origin.x)/self.map_resolution)), (int((y-self.map_origin.y)/self.map_resolution))
+
+
+    def is_free(self, x, y):
+        """see if point x,y in map is free"""
+        map_x, map_y=self.w_to_m(x, y)
+
+        if 0<=map_x<self.map.shape[1] and 0<=map_y<self.map.shape[0]:
+            return self.map[map_y, map_x]<50  #-1=unknown, 0=free, 100=not free
+
+        return False
+
+    def rand_free(self):
+        """ get rand free point on map"""
+        while True:
+            x=random.uniform(self.map_origin.x, self.map_origin.x+self.map.shape[1]*self.map_resolution)
+            y=random.uniform(self.map_origin.y, self.map_origin.y+self.map.shape[0]*self.map_resolution)
+            
+            if self.is_free(x, y):
+                return x, y
+
+    def steer(self, start, end, step=0.5):
+        """ steer from start to end w/ given step """
+        ang=math.atan2(end[1]-start[1], end[0]-start[0])
+
+        updated_x=start[0]+step*math.cos(ang)
+        updated_y=start[1]+step* math.sin(ang)
+
+        return updated_x, updated_y
+
+
+
+    def dist(self, pt_1, pt_2):
+
+        return math.hypot(pt_1[0]-pt_2[0], pt_1[1]-pt_2[1]) #euclidian dist, straught line between diff of x and diff of y
+
+
+    ####################
+    
+
+    def plan_path(self, start, end):
+        """ RRT """
+
+        #x,y, coords from pose msgs
+        start=(start.position.x, start.position.y)
+        goal=(end.position.x, end.position.y)
+
+        #tree init
+        nodes=[start]
+        parents={start: None} #keep parents for when we go backwards
+
+        #CHANGE
+        tol=0.3 #tolerance of being clsoe enough to goal
+        max_iter=2000
+
+        for _ in range(max_iter):
+            rand_free_pt=self.rand_free() #start w random free point
+            closest=self.min(nodes, key=lambda n: math.hypot(n-rand_free_pt, n-rand_free_pt)) #nearest node already in tree to rand_free
+            new_node=self.steer(closest, rand_free_pt) #steer from clsoest node to free point and rcord new node
+
+
+            if self.is_free(*new_node): #add node only if its free
+                nodes.append(new_node)
+                parents[new_node]=closest
+
+                if math.hypot(new_node-goal, new_node-goal)<tol: #if close enough stop
+                    parents[goal]=new_node
+                    break
+
+        #go backwards from goal to start to get path
+        path=[]
+        now=goal
+
+        while now is not None:
+            path.append(now)
+            now=parents.get(now)
+        path.reverse() #reverse to have start to goal path
+
+
+        #write them as poses
+        self.trajectory.clear()
+        for x, y in path:
+            pose=Pose()
+            pose.position.x=float(x)
+            pose.position.y=float(y)
+            self.trajectory.addPose(pose)
+
+        #publish it
         self.traj_pub.publish(self.trajectory.toPoseArray())
         self.trajectory.publish_viz()
+        ##
+
 
 
 def main(args=None):
