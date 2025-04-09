@@ -20,8 +20,8 @@ class PurePursuit(Node):
         self.drive_topic: str = self.get_parameter('drive_topic').get_parameter_value().string_value
 
         # Pure Pursuit parameters.
-        self.declare_parameter('lookahead', 0.5)
-        self.declare_parameter('speed', 0.5)
+        self.declare_parameter('lookahead', 3.0)
+        self.declare_parameter('speed', 1.0)
         self.declare_parameter('wheelbase_length', 0.3302)
 
         self.lookahead: float = self.get_parameter('lookahead').get_parameter_value().double_value
