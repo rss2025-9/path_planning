@@ -12,25 +12,32 @@ class PurePursuit(Node):
 
     def __init__(self):
         super().__init__("trajectory_follower")
+        # Topics to be used.
         self.declare_parameter('odom_topic', "default")
         self.declare_parameter('drive_topic', "default")
 
-        self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
+        self.odom_topic: str = self.get_parameter('odom_topic').get_parameter_value().string_value
+        self.drive_topic: str = self.get_parameter('drive_topic').get_parameter_value().string_value
 
-        self.lookahead = 0  # FILL IN #
-        self.speed = 0  # FILL IN #
-        self.wheelbase_length = 0  # FILL IN #
+        # Pure Pursuit parameters.
+        self.declare_parameter('lookahead', 0.5)
+        self.declare_parameter('speed', 0.5)
+        self.declare_parameter('wheelbase_length', 0.3302)
 
+        self.lookahead: float = self.get_parameter('lookahead').get_parameter_value().double_value
+        self.speed: float = self.get_parameter('speed').get_parameter_value().double_value
+        self.wheelbase_length: float = self.get_parameter('wheelbase_length').get_parameter_value().double_value
+
+        # Subscribers to the planned path and publishers for the drive command.
         self.trajectory = LineTrajectory("/followed_trajectory")
 
-        self.traj_sub = self.create_subscription(PoseArray,
-                                                 "/trajectory/current",
-                                                 self.trajectory_callback,
-                                                 1)
-        self.drive_pub = self.create_publisher(AckermannDriveStamped,
-                                               self.drive_topic,
-                                               1)
+        self.traj_sub = self.create_subscription(
+            PoseArray, "/trajectory/current",
+            self.trajectory_callback, 1
+        )
+        self.drive_pub = self.create_publisher(
+            AckermannDriveStamped, self.drive_topic, 1
+        )
 
     def pose_callback(self, odometry_msg):
         raise NotImplementedError
