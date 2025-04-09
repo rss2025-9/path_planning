@@ -6,6 +6,10 @@ from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray
 from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory
 
+import numpy as np
+import heapq
+import math
+
 
 class PathPlan(Node):
     """ Listens for goal pose published by RViz and uses it to plan a path from
@@ -50,19 +54,49 @@ class PathPlan(Node):
 
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
 
-    def map_cb(self, msg):
-        raise NotImplementedError
+    def map_cb(self, msg: OccupancyGrid):
+        """Takes the Occupancy Grid of the map and creates an internal representation"""
+        safety_threshold = 50
 
-    def pose_cb(self, pose):
-        raise NotImplementedError
+        map_width = msg.info.width
+        map_height = msg.info.height
+        map_data = np.array(msg.data).reshape((map_height, map_width))
 
-    def goal_cb(self, msg):
-        raise NotImplementedError
+        # Mark the grid as 1 if its occupancy probability is greater than safety threshold
+        self.map = (map_data >= safety_threshold).astype(int)
+
+
+    def pose_cb(self, pose: PoseWithCovarianceStamped):
+        """Sets initial pose"""
+        self.initial_pose = pose
+
+
+    def goal_cb(self, msg: PoseStamped):
+        """Sets goal pose"""
+        self.goal_pose = msg
+        if self.initial_pose is None:
+            self.get_logger().warn("Initial pose is not set!")
+            return
+        if self.map is None:
+            self.get_logger().warn("Map not found!")
+            return
+        
+        self.plan_path(self.initial_pose, self.goal_pose, self.map)
 
     def plan_path(self, start_point, end_point, map):
         self.traj_pub.publish(self.trajectory.toPoseArray())
         self.trajectory.publish_viz()
 
+    def a_star():
+        pass
+
+    def heuristic(a, b):
+        # Euclidean distance from a to b
+        x = abs(a[0] - b[0])
+        y = abs(a[1] - b[1])
+        return math.hypot(x, y)
+    
+    def get_neighbors()
 
 def main(args=None):
     rclpy.init(args=args)
