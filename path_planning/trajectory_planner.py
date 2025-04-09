@@ -30,7 +30,7 @@ class PathPlan(Node):
         self.map_sub = self.create_subscription(
             OccupancyGrid,
             self.map_topic,
-            self.map_callback,
+            self.map_cb,
             1)
 
         self.goal_sub = self.create_subscription(
@@ -102,6 +102,9 @@ class PathPlan(Node):
 
         return False
 
+    def dist(self, pt_1, pt_2):
+        return math.hypot(pt_1[0]-pt_2[0], pt_1[1]-pt_2[1])
+
     def rand_free(self):
         """ get rand free point on map"""
         while True:
@@ -120,11 +123,6 @@ class PathPlan(Node):
 
         return updated_x, updated_y
 
-
-
-    def dist(self, pt_1, pt_2):
-
-        return math.hypot(pt_1[0]-pt_2[0], pt_1[1]-pt_2[1]) #euclidian dist, straught line between diff of x and diff of y
 
 
     ####################
@@ -147,7 +145,7 @@ class PathPlan(Node):
 
         for _ in range(max_iter):
             rand_free_pt=self.rand_free() #start w random free point
-            closest=self.min(nodes, key=lambda n: math.hypot(n-rand_free_pt, n-rand_free_pt)) #nearest node already in tree to rand_free
+            closest=min(nodes, key=lambda n: self.dist(n, rand_free_pt)) #nearest node already in tree to rand_free
             new_node=self.steer(closest, rand_free_pt) #steer from clsoest node to free point and rcord new node
 
 
@@ -155,7 +153,7 @@ class PathPlan(Node):
                 nodes.append(new_node)
                 parents[new_node]=closest
 
-                if math.hypot(new_node-goal, new_node-goal)<tol: #if close enough stop
+                if self.dist(new_node, goal) < tol: #if close enough stop
                     parents[goal]=new_node
                     break
 
