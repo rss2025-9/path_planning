@@ -1,8 +1,7 @@
 import rclpy
 from rclpy.node import Node
 
-assert rclpy
-from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray, Pose
 from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory
 
@@ -70,14 +69,18 @@ class PathPlan(Node):
         self.map=np.array(msg.data).reshape((msg.info.height, msg.info.width))
         self.map_resolution=msg.info.resolution
         self.map_origin=msg.info.origin.position
+        self.get_logger().info("Map received")
 
 
     def goal_cb(self, msg):
         """callback for goal pose. calls the planning to start """
         self.goal_pose = msg.pose
-
+        self.get_logger().info("Goal pose received")
         if self.start_pose and self.map is not None: #calls path plan
             self.plan_path(self.start_pose, self.goal_pose)
+        else:
+            self.get_logger().warn("Waiting for start pose or map")
+
 
 
 
@@ -85,22 +88,28 @@ class PathPlan(Node):
     def pose_cb(self, pose):
         """callback for initial pose estimate """
         self.start_pose=pose.pose.pose
+        self.get_logger().info("Start pose received")
+
 
     ######## my functions below here
 
     def w_to_m(self, x, y):
-        """ world coordinates to map coordinates"""
-        return (int((x-self.map_origin.x)/self.map_resolution)), (int((y-self.map_origin.y)/self.map_resolution))
+        """World coordinates to map pixel indices."""
+        mx=int(np.floor((x - self.map_origin.x) / self.map_resolution))
+        my=int(np.floor((y - self.map_origin.y) / self.map_resolution))
+        return mx, my
+
 
 
     def is_free(self, x, y):
-        """see if point x,y in map is free"""
-        map_x, map_y=self.w_to_m(x, y)
-
-        if 0<=map_x<self.map.shape[1] and 0<=map_y<self.map.shape[0]:
-            return self.map[map_y, map_x]<50  #-1=unknown, 0=free, 100=not free
-
+        """returns True if world coordinate (x, y) is in free or unknown space (but not occupied)."""
+        map_x, map_y = self.w_to_m(x, y)
+        if 0 <= map_x < self.map.shape[1] and 0 <= map_y < self.map.shape[0]: #checks that the map indices are within bounds of the occupancy grid
+            cell=self.map[map_y, map_x] #gets occupancy value: -1 = unknown, 0 = free, 100 = occupied
+            return cell >= 0 and cell<50  #free or low occupancy is okay
         return False
+
+    
 
     def dist(self, pt_1, pt_2):
         return math.hypot(pt_1[0]-pt_2[0], pt_1[1]-pt_2[1])
@@ -135,6 +144,18 @@ class PathPlan(Node):
         start=(start.position.x, start.position.y)
         goal=(end.position.x, end.position.y)
 
+        self.get_logger().info(f"Start: {start}, Goal: {goal}")
+
+        goal_mx, goal_my = self.w_to_m(goal[0], goal[1])
+       
+        #SOMETHING IS WRONG HERE BC WE NEVER GO INSIDE THE IF STATEMENT AND IT SAYS EVERYTHING IS OUT OF MAP BOUNDS
+        if 0 <= goal_mx < self.map.shape[1] and 0 <= goal_my < self.map.shape[0]:
+            cell_value = self.map[goal_my, goal_mx]
+            self.get_logger().info(f"Occupancy at goal cell ({goal_mx}, {goal_my}) = {cell_value}")
+        else:
+            self.get_logger().warn("Goal is out of map bounds!")
+
+
         #tree init
         nodes=[start]
         parents={start: None} #keep parents for when we go backwards
@@ -153,27 +174,36 @@ class PathPlan(Node):
                 nodes.append(new_node)
                 parents[new_node]=closest
 
-                if self.dist(new_node, goal) < tol: #if close enough stop
-                    parents[goal]=new_node
+                if self.dist(new_node, goal) < tol and self.is_free(*goal): #if close enough to stop and goal free
+                    parents[goal] = new_node
+                    self.get_logger().info("Goal reached")
                     break
 
-        #go backwards from goal to start to get path
-        path=[]
-        now=goal
+        if goal not in parents:
+            # Didn't reach goal — try closest node
+            closest_to_goal = min(nodes, key=lambda n: self.dist(n, goal))
+            self.get_logger().warn("Goal not reached — using closest node instead.")
+            now = closest_to_goal
+        else:
+            now = goal
+
+        #go backwards from goal (or closest) to start to get path
+        path = []
+
 
         while now is not None:
             path.append(now)
             now=parents.get(now)
         path.reverse() #reverse to have start to goal path
 
+        self.get_logger().info(f"Planned {len(path)} waypoints")
+
 
         #write them as poses
         self.trajectory.clear()
         for x, y in path:
-            pose=Pose()
-            pose.position.x=float(x)
-            pose.position.y=float(y)
-            self.trajectory.addPose(pose)
+            self.trajectory.addPoint((x, y))
+
 
         #publish it
         self.traj_pub.publish(self.trajectory.toPoseArray())
