@@ -54,49 +54,144 @@ class PathPlan(Node):
 
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
 
+        self.map = None
+        self.start_pose = None
+
+        self.get_logger().info("Path planner initialized")
+
     def map_cb(self, msg: OccupancyGrid):
         """Takes the Occupancy Grid of the map and creates an internal representation"""
-        safety_threshold = 50
+        occupied_threshold = 0.65
 
         map_width = msg.info.width
         map_height = msg.info.height
         map_data = np.array(msg.data).reshape((map_height, map_width))
+        self.map_resolution = msg.info.resolution
+        self.map_origin = msg.info.origin.position
 
         # Mark the grid as 1 if its occupancy probability is greater than safety threshold
-        self.map = (map_data >= safety_threshold).astype(int)
+        self.map = (map_data >= occupied_threshold).astype(int)
 
 
     def pose_cb(self, pose: PoseWithCovarianceStamped):
         """Sets initial pose"""
-        self.initial_pose = pose
+        self.start_pose = pose.pose
 
 
     def goal_cb(self, msg: PoseStamped):
         """Sets goal pose"""
         self.goal_pose = msg
-        if self.initial_pose is None:
-            self.get_logger().warn("Initial pose is not set!")
+        if self.start_pose is None:
+            self.get_logger().warn("Start pose is not set!")
             return
         if self.map is None:
             self.get_logger().warn("Map not found!")
             return
         
-        self.plan_path(self.initial_pose, self.goal_pose, self.map)
+        self.plan_path(self.start_pose, self.goal_pose, self.map)
 
     def plan_path(self, start_point, end_point, map):
+
+        start_x = start_point.pose.position.x
+        start_y = start_point.pose.position.y
+        end_x = end_point.pose.position.x
+        end_y = end_point.pose.position.y
+
+        start_map = self.world_to_map(start_x, start_y)
+        end_map = self.world_to_map(end_x, end_y)
+        self.get_logger().info(f"Start grid: {start_map}, Map value: {self.map[start_map[0], start_map[1]]}")
+        self.get_logger().info(f"Goal grid: {end_map}, Map value: {self.map[end_map[0], end_map[1]]}")
+
+        path = self.a_star_search(start_map, end_map, map)
+        # self.get_logger().info(f"Path: {path}")
+        if path is None or len(path) == 0:
+            self.get_logger().error("No path found!")
+            return
+        self.get_logger().info(f"Path found with {len(path)} waypoints.")
+
+        world_coords = []
+        for (row, col) in path:
+            world_xy = self.map_to_world(col, row)
+            world_coords.append(world_xy)
+
+        self.trajectory.clear()
+        for point in world_coords:
+            self.trajectory.addPoint(point)
+        
         self.traj_pub.publish(self.trajectory.toPoseArray())
         self.trajectory.publish_viz()
 
-    def a_star():
-        pass
+    def world_to_map(self, x, y):
+        """Convert the world coordinate to map coordinate"""
+        col = int((x - self.map_origin.x) / self.map_resolution)
+        row = int((y - self.map_origin.y) / self.map_resolution)
+        return (row, col)
 
-    def heuristic(a, b):
+    def map_to_world(self, col, row):
+        """Convert the map coordinate to world coordinate"""
+        x = self.map_origin.x + (col * self.map_resolution) + (self.map_resolution / 2.0)
+        y = self.map_origin.y + (row * self.map_resolution) + (self.map_resolution / 2.0)
+        return (x, y)
+    
+    def heuristic(self, a, b):
         # Euclidean distance from a to b
         x = abs(a[0] - b[0])
         y = abs(a[1] - b[1])
         return math.hypot(x, y)
     
-    def get_neighbors()
+    def get_neighbors(self, map, node):
+        (x, y) = node
+        neighbors = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
+        # candidates = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
+        # for candidate in candidates:
+        #     # check if the candidate neighbor is out of the map
+        #     if 0 <= candidate[0] < map.shape[0] and 0 <= candidate[1] < map.shape[1]:
+        #         # add the candidate to neighbors list only if it has no obstacle
+        #         if map[candidate[0], candidate[1]] == 0:
+        #             neighbors.append(candidate)
+        # self.get_logger().info(f"Neighbors: {neighbors}")
+        return neighbors
+    
+    def reconstruct_path(self, came_from, start_point, end_point):
+        """Go backward from end point to start point to construct a path"""
+        current = end_point
+        path = []
+        self.get_logger().info(f"Came from: {came_from}")
+        # return an empty path if no path is found
+        if end_point not in came_from:
+            return []
+        while current != start_point:
+            path.append(current)
+            current = came_from[current]
+        path.append(start_point)
+        path.reverse()
+        return path
+
+    def a_star_search(self, start_point, end_point, map):
+        frontier = []
+        heapq.heappush(frontier, (0, start_point))
+
+        came_from = {}  # to reconstruct the path (node: came_from node)
+        c_score = {start_point: 0}
+        f_score = {start_point: self.heuristic(start_point, end_point)}
+
+        while frontier:
+            current = heapq.heappop(frontier)[1]    # get the node with the lowest priority
+
+            if current == end_point:
+                self.get_logger().info(f"Current node: {current}")
+                return self.reconstruct_path(came_from, start_point, current)
+            
+            for neighbor in self.get_neighbors(map, current):
+                new_c_cost = c_score[current] + 1   # cost of moving to neighbor
+                if neighbor not in c_score or new_c_cost < c_score[neighbor]:
+                    c_score[neighbor] = new_c_cost
+                    # f(x) = c(x) + h(x) from lecture
+                    f_score[neighbor] = new_c_cost + self.heuristic(neighbor, end_point)
+                    heapq.heappush(frontier, (f_score[neighbor], neighbor))
+                    came_from[neighbor] = current
+
+        return None   # no path found
 
 def main(args=None):
     rclpy.init(args=args)
