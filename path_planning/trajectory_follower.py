@@ -27,7 +27,7 @@ class PurePursuit(Node):
         self.drive_topic: str = self.get_parameter('drive_topic').get_parameter_value().string_value
 
         # Pure Pursuit parameters.
-        self.declare_parameter('lookahead', 3.0)
+        self.declare_parameter('lookahead', 2.0)
         self.declare_parameter('speed', 1.0)
         self.declare_parameter('wheelbase_length', 0.3302)
 
@@ -64,50 +64,52 @@ class PurePursuit(Node):
             [pose.orientation.x, pose.orientation.y,
              pose.orientation.z, pose.orientation.w]
         )[2]
+        # Calculate the heading unit vector.
+        heading_vector = np.array([np.cos(yaw), np.sin(yaw)])
 
-        # Finds the path point closest to the robot.
+        # Moves only if the trajectory is initialized, otherwise publish stop.
         if not self.initialized_traj:
             self.get_logger().warning("Trajectory not initialized yet.")
+            # Publish a stop command.
+            drive_cmd: AckermannDriveStamped = AckermannDriveStamped()
+            drive_cmd.drive.speed = 0.0
+            drive_cmd.drive.steering_angle = 0.0
+            drive_cmd.drive.steering_angle_velocity = 0.0
+            self.drive_pub.publish(drive_cmd)
             return
         
         # Calculates the distance to all points in the trajectory, vectorized.
         trajectory_points: npt.NDArray[np.float64] = np.array(
             self.trajectory.points
         )
-        distances: npt.NDArray[np.float64] = np.linalg.norm(
-            trajectory_points - position, axis=1
-        )
+        relative_positions: npt.NDArray = trajectory_points - position  # vector from vehicle to each trajectory point
+        # Rotates relative positions to the vehicle's frame.
+        relative_positions = np.array([
+            relative_positions[:, 0] * np.cos(yaw) + relative_positions[:, 1] * np.sin(yaw),
+            -relative_positions[:, 0] * np.sin(yaw) + relative_positions[:, 1] * np.cos(yaw)
+        ]).T
+        # Only considers trajectory points ahead of the vehicle.
+        ahead_points: npt.NDArray = relative_positions[relative_positions[:, 0] >= 0]
 
-        # Finds the index of the closest point.
-        closest_index: int = np.argmin(distances)
+        # Only consider points with positive projection on the heading vector.
+        goal_point: npt.NDArray[np.float64] = None
+        if not np.any(ahead_points):
+            # If no points are ahead, default to the closest point.
+            goal_point = relative_positions[np.argmin(
+                np.linalg.norm(relative_positions, axis=1)
+            )]
+        else:
+            # Use only the points ahead.
+            distances_ahead = np.linalg.norm(ahead_points, axis=1)
+            # Find the index in the filtered array of the point closest to the lookahead distance.
+            # Note: You might also want to compute the index relative to the full trajectory if needed.
+            idx = np.argmin(np.abs(distances_ahead - self.lookahead))
+            # Then use the corresponding global coordinate as the starting point.
+            goal_point = ahead_points[idx]
 
-        # Finds the lookahead/goal point.
-        goal_point = trajectory_points[closest_index] # Use the closest point as the default for safety.
-        for i in range(closest_index, len(trajectory_points)):
-            # If the distance is equal, set it as the goal point.
-            if distances[i] == self.lookahead:
-                goal_point: npt.NDArray[np.float64] = trajectory_points[i]
-                break
-            # If not, interpolate between the two points.
-            elif distances[i] > self.lookahead:
-                goal_point: npt.NDArray[np.float64] = (
-                    trajectory_points[i - 1] +
-                    (self.lookahead - distances[i - 1]) /
-                    (distances[i] - distances[i - 1]) *
-                    (trajectory_points[i] - trajectory_points[i - 1])
-                )
-                break
-        
-        # Transform the goal point to the robot's frame.
-        goal_point = np.array([
-            goal_point[0] - position[0],
-            goal_point[1] - position[1]
-        ])
-        # Rotate the goal point by the robot's heading.
-        goal_point = np.array([
-            goal_point[0] * np.cos(yaw) + goal_point[1] * np.sin(yaw),
-            -goal_point[0] * np.sin(yaw) + goal_point[1] * np.cos(yaw)
-        ])
+        # Fallback if no suitable goal point was found.
+        if goal_point is None:
+            goal_point = relative_positions[-1]
         self.get_logger().info(f"Goal point: {goal_point}")
 
         # Calculate the curvature 
