@@ -1,8 +1,11 @@
 import rclpy
+from rclpy.node import Node
+# Driving.
 from ackermann_msgs.msg import AckermannDriveStamped
 from nav_msgs.msg import Odometry
+# Geometry.
 from geometry_msgs.msg import Pose, PoseArray
-from rclpy.node import Node
+from tf_transformations import euler_from_quaternion
 
 import numpy as np
 import numpy.typing as npt
@@ -57,7 +60,10 @@ class PurePursuit(Node):
         # Gets vectorized Pose of the robot.
         pose: Pose = odometry_msg.pose.pose
         position: npt.NDArray = np.array([pose.position.x, pose.position.y])
-        yaw: np.float64 = np.arctan2(2 * (pose.orientation.z), pose.orientation.w)
+        yaw: np.float64 = euler_from_quaternion(
+            [pose.orientation.x, pose.orientation.y,
+             pose.orientation.z, pose.orientation.w]
+        )[2]
 
         # Finds the path point closest to the robot.
         if not self.initialized_traj:
@@ -76,6 +82,7 @@ class PurePursuit(Node):
         closest_index: int = np.argmin(distances)
 
         # Finds the lookahead/goal point.
+        goal_point = trajectory_points[closest_index] # Use the closest point as the default for safety.
         for i in range(closest_index, len(trajectory_points)):
             # If the distance is equal, set it as the goal point.
             if distances[i] == self.lookahead:
