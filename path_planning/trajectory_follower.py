@@ -1,6 +1,7 @@
 import rclpy
 from ackermann_msgs.msg import AckermannDriveStamped
-from geometry_msgs.msg import Odometry, Pose, PoseArray
+from nav_msgs.msg import Odometry
+from geometry_msgs.msg import Pose, PoseArray
 from rclpy.node import Node
 
 import numpy as np
@@ -33,6 +34,7 @@ class PurePursuit(Node):
 
         # Subscribers to the planned path and publishers for the drive command.
         self.trajectory: LineTrajectory = LineTrajectory("/followed_trajectory")
+        self.initialized_traj = False
 
         self.traj_sub = self.create_subscription(
             PoseArray, "/trajectory/current",
@@ -54,7 +56,7 @@ class PurePursuit(Node):
         # Gets vectorized Pose of the robot.
         pose: Pose = odometry_msg.pose.pose
         position: npt.NDArray = np.array([pose.position.x, pose.position.y])
-        heading: np.float64 = 2 * np.arccos2(pose.orientation.w)
+        heading: np.float64 = 2 * np.arccos(pose.orientation.w)
 
         # Finds the path point closest to the robot.
         if not self.initialized_traj:
