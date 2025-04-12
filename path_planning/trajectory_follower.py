@@ -53,13 +53,15 @@ class PurePursuit(Node):
         Takes the current position of the robot, finds the nearest point on the
         path, sets that as the goal point, and navigates towards it.
         """
+        self.get_logger().info("Received odometry message")
         # Gets vectorized Pose of the robot.
         pose: Pose = odometry_msg.pose.pose
         position: npt.NDArray = np.array([pose.position.x, pose.position.y])
-        heading: np.float64 = 2 * np.arccos(pose.orientation.w)
+        yaw: np.float64 = np.arctan2(2 * (pose.orientation.z), pose.orientation.w)
 
         # Finds the path point closest to the robot.
         if not self.initialized_traj:
+            self.get_logger().warning("Trajectory not initialized yet.")
             return
         
         # Calculates the distance to all points in the trajectory, vectorized.
@@ -72,7 +74,6 @@ class PurePursuit(Node):
 
         # Finds the index of the closest point.
         closest_index: int = np.argmin(distances)
-        closest_point: npt.NDArray[np.float64] = trajectory_points[closest_index]
 
         # Finds the lookahead/goal point.
         for i in range(closest_index, len(trajectory_points)):
@@ -97,14 +98,16 @@ class PurePursuit(Node):
         ])
         # Rotate the goal point by the robot's heading.
         goal_point = np.array([
-            goal_point[0] * np.cos(heading) + goal_point[1] * np.sin(heading),
-            -goal_point[0] * np.sin(heading) + goal_point[1] * np.cos(heading)
+            goal_point[0] * np.cos(yaw) + goal_point[1] * np.sin(yaw),
+            -goal_point[0] * np.sin(yaw) + goal_point[1] * np.cos(yaw)
         ])
+        self.get_logger().info(f"Goal point: {goal_point}")
 
         # Calculate the curvature 
-        gamma: float = 2 * goal_point[0] / (self.lookahead ** 2)
+        gamma: float = 2 * goal_point[1] / (self.lookahead ** 2)
         # Calculate the steering angle.
         steering_angle: float = np.arctan(gamma * self.wheelbase_length)
+        self.get_logger().info(f"Steering angle: {steering_angle}")
         
         # Create the drive command.
         drive_cmd: AckermannDriveStamped = AckermannDriveStamped()
