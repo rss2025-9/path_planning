@@ -129,8 +129,8 @@ class PurePursuit(Node):
                     # Dot product of traj and p2v, to determine distance projection.
                     delta: npt.NDArray = np.dot(p2v, traj)
                     # Parameterized equation of the line to find the goal point.
-                    t: np.float = -2 * delta + np.sqrt(
-                        4 * (delta ** 2 + self.lookahead ** 2 -  1)
+                    t: np.float = -delta + np.sqrt(
+                        delta ** 2 + self.lookahead ** 2 - 1
                     )
                     # Get the goal point + safety from square root.
                     goal_point = (relative_positions[i-1] if np.isnan(t)
