@@ -56,16 +56,13 @@ class PurePursuit(Node):
         Takes the current position of the robot, finds the nearest point on the
         path, sets that as the goal point, and navigates towards it.
         """
-        self.get_logger().info("Received odometry message")
         # Gets vectorized Pose of the robot.
         pose: Pose = odometry_msg.pose.pose
         position: npt.NDArray = np.array([pose.position.x, pose.position.y])
-        yaw: np.float64 = euler_from_quaternion(
+        yaw: np.float64 = -euler_from_quaternion(
             [pose.orientation.x, pose.orientation.y,
              pose.orientation.z, pose.orientation.w]
         )[2]
-        # Calculate the heading unit vector.
-        heading_vector = np.array([np.cos(yaw), np.sin(yaw)])
 
         # Moves only if the trajectory is initialized, otherwise publish stop.
         if not self.initialized_traj:
@@ -85,8 +82,8 @@ class PurePursuit(Node):
         relative_positions: npt.NDArray = trajectory_points - position  # vector from vehicle to each trajectory point
         # Rotates relative positions to the vehicle's frame.
         relative_positions = np.array([
-            relative_positions[:, 0] * np.cos(yaw) + relative_positions[:, 1] * np.sin(yaw),
-            -relative_positions[:, 0] * np.sin(yaw) + relative_positions[:, 1] * np.cos(yaw)
+            relative_positions[:, 0] * np.cos(yaw) - relative_positions[:, 1] * np.sin(yaw),
+            relative_positions[:, 0] * np.sin(yaw) + relative_positions[:, 1] * np.cos(yaw)
         ]).T
         # Only considers trajectory points ahead of the vehicle.
         ahead_points: npt.NDArray = relative_positions[relative_positions[:, 0] >= 0]
