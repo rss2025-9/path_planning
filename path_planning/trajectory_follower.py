@@ -81,10 +81,9 @@ class PurePursuit(Node):
             return
         
         # Calculates the distance to all points in the trajectory, vectorized.
-        trajectory_points: npt.NDArray[np.float64] = np.array(
+        relative_positions: npt.NDArray = np.array(
             self.trajectory.points
-        )
-        relative_positions: npt.NDArray = trajectory_points - position  # vector from vehicle to each trajectory point
+        ) - position  # vector from vehicle to each trajectory point
         distances: npt.NDArray = np.linalg.norm(relative_positions, axis=1)
         # Rotates relative positions to the vehicle's frame.
         rotation_matrix: npt.NDArray = np.array([
@@ -106,7 +105,7 @@ class PurePursuit(Node):
             # Get the closest point in the trajectory.
             closest_idx = np.argmin(distances)
             # If the closest point is the last one, stop.
-            if closest_idx == len(trajectory_points) - 1:
+            if closest_idx == len(relative_positions) - 1:
                 self.get_logger().warning("Last point in trajectory reached, stopping.")
                 self.publish_drive_cmd(0.0, 0.0)
                 return
@@ -120,10 +119,10 @@ class PurePursuit(Node):
         else:
             # Find the first point that is within the lookahead distance.
             self.get_logger().info("####Interpolating through trajectory traversal.####")
-            for i in range(closest_idx + 1, len(trajectory_points)):
+            for i in range(closest_idx + 1, len(relative_positions)):
                 if distances[i] >= self.lookahead:
                     # Determines the unit vector of the trajectory.
-                    traj: npt.NDArray[np.float] = trajectory_points[i] - trajectory_points[i-1]
+                    traj: npt.NDArray[np.float] = relative_positions[i] - relative_positions[i-1]
                     traj /= np.linalg.norm(traj)
                     # Finds the unit vector of the first point to the vehicle.
                     p2v: np.float = relative_positions[i-1] / distances[i]
