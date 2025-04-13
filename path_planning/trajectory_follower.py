@@ -52,6 +52,16 @@ class PurePursuit(Node):
         self.drive_pub = self.create_publisher(
             AckermannDriveStamped, self.drive_topic, 1
         )
+    
+    def publish_drive_cmd(self, speed: float, steering_angle: float):
+        """
+        Publishes the drive command to the vehicle.
+        """
+        drive_cmd: AckermannDriveStamped = AckermannDriveStamped()
+        drive_cmd.drive.speed = speed
+        drive_cmd.drive.steering_angle = steering_angle
+        drive_cmd.drive.steering_angle_velocity = 0.0
+        self.drive_pub.publish(drive_cmd)
 
     def pose_callback(self, odometry_msg: Odometry):
         """
@@ -70,11 +80,7 @@ class PurePursuit(Node):
         if not self.initialized_traj:
             self.get_logger().warning("Trajectory not initialized yet.")
             # Publish a stop command.
-            drive_cmd: AckermannDriveStamped = AckermannDriveStamped()
-            drive_cmd.drive.speed = 0.0
-            drive_cmd.drive.steering_angle = 0.0
-            drive_cmd.drive.steering_angle_velocity = 0.0
-            self.drive_pub.publish(drive_cmd)
+            self.publish_drive_cmd(0.0, 0.0)
             return
         
         # Calculates the distance to all points in the trajectory, vectorized.
@@ -139,13 +145,8 @@ class PurePursuit(Node):
         steering_angle: float = np.arctan(gamma * self.wheelbase_length)
         self.get_logger().info(f"Steering angle: {steering_angle}")
         
-        # Create the drive command.
-        drive_cmd: AckermannDriveStamped = AckermannDriveStamped()
-        drive_cmd.drive.speed = self.speed
-        drive_cmd.drive.steering_angle = steering_angle
-        drive_cmd.drive.steering_angle_velocity = 0.0
         # Publish the drive command.
-        self.drive_pub.publish(drive_cmd)
+        self.publish_drive_cmd(self.speed, steering_angle)
 
     def trajectory_callback(self, msg):
         self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
