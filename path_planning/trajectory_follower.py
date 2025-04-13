@@ -108,19 +108,25 @@ class PurePursuit(Node):
             goal_point = relative_positions[closest_idx]
         else:
             # Find the first point that is within the lookahead distance.
-            prev_point = relative_positions[closest_idx]
-            for i in range(closest_idx + 1, len(relative_positions)):
+            prev_point = trajectory_points[closest_idx]
+            for i in range(closest_idx + 1, len(trajectory_points)):
                 if distances[i] >= self.lookahead:
                     # Linearly interpolate to find the goal point.
                     low_point = prev_point
-                    mid_point = relative_positions[i]
+                    mid_point = trajectory_points[i]
                     for _ in range(self.interpolation_iterations):
                         midpoint = (low_point + mid_point) / 2
                         self.get_logger().info(f"Midpoint: {midpoint}")
-                        if np.isclose(np.linalg.norm(midpoint), self.lookahead, atol=0.01):
+                        if np.isclose(np.linalg.norm(midpoint - position), self.lookahead, atol=0.01):
+                            # Converts midpoint to the vehicle's frame.
+                            goal_point: npt.NDArray = midpoint - position
+                            goal_point = np.array([
+                                goal_point[0] * np.cos(yaw) - goal_point[1] * np.sin(yaw),
+                                goal_point[0] * np.sin(yaw) + goal_point[1] * np.cos(yaw)
+                            ])
                             break
                     break
-                prev_point = relative_positions[i]
+                prev_point = trajectory_points[i]
             # If no points are found, use the last point.
             if goal_point is None:
                 goal_point = relative_positions[-1]
