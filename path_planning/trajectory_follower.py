@@ -120,11 +120,7 @@ class PurePursuit(Node):
                         self.get_logger().info(f"Midpoint: {midpoint}")
                         if np.isclose(np.linalg.norm(midpoint - position), self.lookahead, atol=0.01):
                             # Converts midpoint to the vehicle's frame.
-                            goal_point: npt.NDArray = midpoint - position
-                            goal_point = np.array([
-                                goal_point[0] * np.cos(yaw) - goal_point[1] * np.sin(yaw),
-                                goal_point[0] * np.sin(yaw) + goal_point[1] * np.cos(yaw)
-                            ])
+                            goal_point = (midpoint - position) @ rotation_matrix.T
                             break
                     break
                 prev_point = trajectory_points[i]
