@@ -79,7 +79,6 @@ class PurePursuit(Node):
         # Moves only if the trajectory is initialized, otherwise publish stop.
         if not self.initialized_traj:
             self.get_logger().warning("Trajectory not initialized yet.")
-            # Publish a stop command.
             self.publish_drive_cmd(0.0, 0.0)
             return
         
@@ -88,31 +87,37 @@ class PurePursuit(Node):
             self.trajectory.points
         )
         relative_positions: npt.NDArray = trajectory_points - position  # vector from vehicle to each trajectory point
+        distances: npt.NDArray = np.linalg.norm(relative_positions, axis=1)
         # Rotates relative positions to the vehicle's frame.
         rotation_matrix: npt.NDArray = np.array([
             [np.cos(yaw), -np.sin(yaw)],
             [np.sin(yaw), np.cos(yaw)]
         ])
-        relative_positions = relative_positions @ rotation_matrix.T
-        # Calculates the distances to each point.
-        distances: npt.NDArray = np.linalg.norm(relative_positions, axis=1)
+        # Calculates whether the points are ahead of the vehicle.
+        forwards: npt.NDArray[np.bool] = relative_positions @ rotation_matrix.T[:, 0] > 0
         # Replaces the distance of behind points with a large value.
-        distances_ahead: npt.NDArray = np.where(
-            relative_positions[:, 0] > 0,
-            distances,
-            np.inf
-        )
+        distances_ahead: npt.NDArray = np.where(forwards, distances, np.inf)
         # Finds the index of the closest point ahead.
         closest_idx = np.argmin(distances_ahead)
 
         # Only consider points with positive projection on the heading vector.
         goal_point: npt.NDArray[np.float64] = None
-        if not np.any(relative_positions[:, 0] > 0):
-            # If no points are ahead, default to the closest point.
+        # If no points are ahead.
+        if not np.any(forwards):
+            self.get_logger().warning("No points ahead of the vehicle.")
+            # Get the closest point in the trajectory.
+            closest_idx = np.argmin(distances)
+            # If the closest point is the last one, stop.
+            if closest_idx == len(trajectory_points) - 1:
+                self.get_logger().warning("Last point in trajectory reached, stopping.")
+                self.publish_drive_cmd(0.0, 0.0)
+                return
+            # Otherwise, set the goal point to the closest point.
             goal_point = relative_positions[np.argmin(distances)]
         elif distances[closest_idx] >= self.lookahead:
-            # If the closest point is beyond the lookahead distance, use it.
-            goal_point = relative_positions[closest_idx]
+            # If the closest point is beyond the lookahead distance, interpolate
+            # between the car and it to find the goal point.
+            goal_point = relative_positions[closest_idx] * (distances[closest_idx] / self.lookahead)
         else:
             # Find the first point that is within the lookahead distance.
             prev_point = trajectory_points[closest_idx]
@@ -126,7 +131,7 @@ class PurePursuit(Node):
                         self.get_logger().info(f"Midpoint: {midpoint}")
                         if np.isclose(np.linalg.norm(midpoint - position), self.lookahead, atol=0.01):
                             # Converts midpoint to the vehicle's frame.
-                            goal_point = (midpoint - position) @ rotation_matrix.T
+                            goal_point = midpoint - position
                             break
                     break
                 prev_point = trajectory_points[i]
@@ -134,9 +139,8 @@ class PurePursuit(Node):
             if goal_point is None:
                 goal_point = relative_positions[-1]
 
-        # Fallback if no suitable goal point was found.
-        if goal_point is None:
-            goal_point = relative_positions[-1]
+        # Rotates the goal point to the vehicle's frame.
+        goal_point = goal_point @ rotation_matrix.T
         self.get_logger().info(f"Goal point: {goal_point}")
 
         # Calculate the curvature 
