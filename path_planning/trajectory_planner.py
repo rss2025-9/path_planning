@@ -61,7 +61,7 @@ class PathPlan(Node):
 
     def map_cb(self, msg: OccupancyGrid):
         """Takes the Occupancy Grid of the map and creates an internal representation"""
-        occupied_threshold = 0.65
+        occupied_threshold = 65
 
         map_width = msg.info.width
         map_height = msg.info.height
@@ -92,12 +92,13 @@ class PathPlan(Node):
 
     def plan_path(self, start_point, end_point, map):
 
+        # In world coordinates
         start_x = start_point.pose.position.x
         start_y = start_point.pose.position.y
         end_x = end_point.pose.position.x
         end_y = end_point.pose.position.y
 
-        start_map = self.world_to_map(start_x, start_y)
+        start_map = self.world_to_map(start_x, start_y) 
         end_map = self.world_to_map(end_x, end_y)
         self.get_logger().info(f"Start grid: {start_map}, Map value: {self.map[start_map[0], start_map[1]]}")
         self.get_logger().info(f"Goal grid: {end_map}, Map value: {self.map[end_map[0], end_map[1]]}")
@@ -125,7 +126,7 @@ class PathPlan(Node):
         """Convert the world coordinate to map coordinate"""
         col = int((x - self.map_origin.x) / self.map_resolution)
         row = int((y - self.map_origin.y) / self.map_resolution)
-        return (row, col)
+        return (col, row) 
 
     def map_to_world(self, col, row):
         """Convert the map coordinate to world coordinate"""
@@ -141,14 +142,15 @@ class PathPlan(Node):
     
     def get_neighbors(self, map, node):
         (x, y) = node
-        neighbors = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
-        # candidates = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
-        # for candidate in candidates:
-        #     # check if the candidate neighbor is out of the map
-        #     if 0 <= candidate[0] < map.shape[0] and 0 <= candidate[1] < map.shape[1]:
-        #         # add the candidate to neighbors list only if it has no obstacle
-        #         if map[candidate[0], candidate[1]] == 0:
-        #             neighbors.append(candidate)
+        neighbors = []
+        candidates = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]   # N, E, S, W directions
+        for cx, cy in candidates:
+            # check if the candidate neighbor is out of the map
+                # add the candidate to neighbors list only if it has no obstacle
+            if map[cy, cx] == 0:
+                    neighbors.append((cx, cy))
+            else:
+                self.get_logger().error("No path found!")
         # self.get_logger().info(f"Neighbors: {neighbors}")
         return neighbors
     
@@ -156,7 +158,7 @@ class PathPlan(Node):
         """Go backward from end point to start point to construct a path"""
         current = end_point
         path = []
-        self.get_logger().info(f"Came from: {came_from}")
+        # self.get_logger().info(f"Came from: {came_from}")
         # return an empty path if no path is found
         if end_point not in came_from:
             return []
