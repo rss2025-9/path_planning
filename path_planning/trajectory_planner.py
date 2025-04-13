@@ -70,7 +70,7 @@ class PathPlan(Node):
 
     def map_cb(self, msg: OccupancyGrid):
         """Takes the Occupancy Grid of the map and creates an internal representation"""
-        occupied_threshold = 0.45
+        occupied_threshold = .65
 
         map_width = msg.info.width
         map_height = msg.info.height
@@ -101,12 +101,13 @@ class PathPlan(Node):
 
     def plan_path(self, start_point, end_point, map):
 
+        # In world coordinates
         start_x = start_point.pose.position.x
         start_y = start_point.pose.position.y
         end_x = end_point.pose.position.x
         end_y = end_point.pose.position.y
 
-        start_map = self.world_to_map(start_x, start_y)
+        start_map = self.world_to_map(start_x, start_y) 
         end_map = self.world_to_map(end_x, end_y)
         self.get_logger().info(f"Start grid: {start_map}, Map value: {self.map[start_map[0], start_map[1]]}")
         self.get_logger().info(f"Goal grid: {end_map}, Map value: {self.map[end_map[0], end_map[1]]}")
@@ -165,7 +166,7 @@ class PathPlan(Node):
         """Go backward from end point to start point to construct a path"""
         current = end_point
         path = []
-        self.get_logger().info(f"Came from: {came_from}")
+        # self.get_logger().info(f"Came from: {came_from}")
         # return an empty path if no path is found
         if end_point not in came_from:
             return []
