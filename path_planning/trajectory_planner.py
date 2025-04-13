@@ -11,6 +11,7 @@ import heapq
 import math
 
 
+
 class PathPlan(Node):
     """ Listens for goal pose published by RViz and uses it to plan a path from
     current car pose.
@@ -25,6 +26,14 @@ class PathPlan(Node):
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.map_topic = self.get_parameter('map_topic').get_parameter_value().string_value
         self.initial_pose_topic = self.get_parameter('initial_pose_topic').get_parameter_value().string_value
+
+        x = 25.900000
+        y = 48.50000
+        theta = 3.14
+        resolution = 0.0504
+        self.transform = np.array([[np.cos(theta), -np.sin(theta), x],
+                    [np.sin(theta), np.cos(theta), y],
+                    [0,0,1]])
 
         self.map_sub = self.create_subscription(
             OccupancyGrid,
@@ -61,7 +70,7 @@ class PathPlan(Node):
 
     def map_cb(self, msg: OccupancyGrid):
         """Takes the Occupancy Grid of the map and creates an internal representation"""
-        occupied_threshold = 0.65
+        occupied_threshold = 0.45
 
         map_width = msg.info.width
         map_height = msg.info.height
@@ -120,19 +129,19 @@ class PathPlan(Node):
         
         self.traj_pub.publish(self.trajectory.toPoseArray())
         self.trajectory.publish_viz()
-
-    def world_to_map(self, x, y):
-        """Convert the world coordinate to map coordinate"""
-        col = int((x - self.map_origin.x) / self.map_resolution)
-        row = int((y - self.map_origin.y) / self.map_resolution)
-        return (row, col)
-
-    def map_to_world(self, col, row):
-        """Convert the map coordinate to world coordinate"""
-        x = self.map_origin.x + (col * self.map_resolution) + (self.map_resolution / 2.0)
-        y = self.map_origin.y + (row * self.map_resolution) + (self.map_resolution / 2.0)
-        return (x, y)
     
+    def world_to_map(self, x, y):
+        """World to map index using transform matrix (inverse of the transform)."""
+        point = np.array([x, y, 1.0])
+        pixel = self.transform @ point
+        pixel = pixel / self.map_resolution
+        return int(pixel[1]), int(pixel[0])  # (row, col)
+    def map_to_world(self, col, row):
+        """Map index to world coordinates using inverse transform."""
+        pixel = np.array([col * self.map_resolution, row * self.map_resolution, 1.0])
+        point = np.linalg.inv(self.transform) @ pixel
+        return float(point[0]), float(point[1])
+
     def heuristic(self, a, b):
         # Euclidean distance from a to b
         x = abs(a[0] - b[0])
@@ -141,14 +150,14 @@ class PathPlan(Node):
     
     def get_neighbors(self, map, node):
         (x, y) = node
-        neighbors = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
-        # candidates = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
-        # for candidate in candidates:
-        #     # check if the candidate neighbor is out of the map
-        #     if 0 <= candidate[0] < map.shape[0] and 0 <= candidate[1] < map.shape[1]:
-        #         # add the candidate to neighbors list only if it has no obstacle
-        #         if map[candidate[0], candidate[1]] == 0:
-        #             neighbors.append(candidate)
+        neighbors = []
+        candidates = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
+        for candidate in candidates:
+            # check if the candidate neighbor is out of the map
+            if 0 <= candidate[0] < map.shape[0] and 0 <= candidate[1] < map.shape[1]:
+                # add the candidate to neighbors list only if it has no obstacle
+                if map[candidate[0], candidate[1]] == 0:
+                    neighbors.append(candidate)
         # self.get_logger().info(f"Neighbors: {neighbors}")
         return neighbors
     
@@ -192,6 +201,7 @@ class PathPlan(Node):
                     came_from[neighbor] = current
 
         return None   # no path found
+
 
 def main(args=None):
     rclpy.init(args=args)
