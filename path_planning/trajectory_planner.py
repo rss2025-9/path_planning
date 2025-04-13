@@ -70,7 +70,7 @@ class PathPlan(Node):
 
     def map_cb(self, msg: OccupancyGrid):
         """Takes the Occupancy Grid of the map and creates an internal representation"""
-        occupied_threshold = .65
+        # occupied_threshold = 0.65
 
         map_width = msg.info.width
         map_height = msg.info.height
@@ -78,8 +78,8 @@ class PathPlan(Node):
         self.map_resolution = msg.info.resolution
         self.map_origin = msg.info.origin.position
 
-        # Mark the grid as 1 if its occupancy probability is greater than safety threshold
-        self.map = (map_data >= occupied_threshold).astype(int)
+        # Mark the grid as 1 if its occupancy value is -1
+        self.map = (map_data == -1).astype(int)
 
 
     def pose_cb(self, pose: PoseWithCovarianceStamped):
@@ -137,6 +137,7 @@ class PathPlan(Node):
         pixel = self.transform @ point
         pixel = pixel / self.map_resolution
         return int(pixel[1]), int(pixel[0])  # (row, col)
+    
     def map_to_world(self, col, row):
         """Map index to world coordinates using inverse transform."""
         pixel = np.array([col * self.map_resolution, row * self.map_resolution, 1.0])
