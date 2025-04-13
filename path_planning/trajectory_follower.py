@@ -27,13 +27,15 @@ class PurePursuit(Node):
         self.drive_topic: str = self.get_parameter('drive_topic').get_parameter_value().string_value
 
         # Pure Pursuit parameters.
-        self.declare_parameter('lookahead', 2.0)
+        self.declare_parameter('lookahead', 0.5)
         self.declare_parameter('speed', 1.0)
         self.declare_parameter('wheelbase_length', 0.3302)
+        self.declare_parameter('interpolation_iterations', 10)
 
         self.lookahead: float = self.get_parameter('lookahead').get_parameter_value().double_value
         self.speed: float = self.get_parameter('speed').get_parameter_value().double_value
         self.wheelbase_length: float = self.get_parameter('wheelbase_length').get_parameter_value().double_value
+        self.interpolation_iterations: int = self.get_parameter('interpolation_iterations').get_parameter_value().integer_value
 
         # Subscribers to the planned path and publishers for the drive command.
         self.trajectory: LineTrajectory = LineTrajectory("/followed_trajectory")
@@ -101,12 +103,24 @@ class PurePursuit(Node):
         if not np.any(relative_positions[:, 0] > 0):
             # If no points are ahead, default to the closest point.
             goal_point = relative_positions[np.argmin(distances)]
+        elif distances[closest_idx] >= self.lookahead:
+            # If the closest point is beyond the lookahead distance, use it.
+            goal_point = relative_positions[closest_idx]
         else:
             # Find the first point that is within the lookahead distance.
-            for i in range(closest_idx, len(relative_positions)):
-                if relative_positions[i, 0] > self.lookahead:
-                    goal_point = relative_positions[i]
+            prev_point = relative_positions[closest_idx]
+            for i in range(closest_idx + 1, len(relative_positions)):
+                if distances[i] >= self.lookahead:
+                    # Linearly interpolate to find the goal point.
+                    low_point = prev_point
+                    mid_point = relative_positions[i]
+                    for _ in range(self.interpolation_iterations):
+                        midpoint = (low_point + mid_point) / 2
+                        self.get_logger().info(f"Midpoint: {midpoint}")
+                        if np.isclose(np.linalg.norm(midpoint), self.lookahead, atol=0.01):
+                            break
                     break
+                prev_point = relative_positions[i]
             # If no points are found, use the last point.
             if goal_point is None:
                 goal_point = relative_positions[-1]
