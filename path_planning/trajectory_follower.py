@@ -98,7 +98,7 @@ class PurePursuit(Node):
         # Replaces the distance of behind points with a large value.
         distances_ahead: npt.NDArray = np.where(forwards, distances, np.inf)
         # Finds the index of the closest point ahead.
-        closest_idx = np.argmin(distances_ahead)
+        closest_idx: int = np.argmin(distances_ahead)
 
         # Only consider points with positive projection on the heading vector.
         goal_point: npt.NDArray[np.float64] = None
@@ -117,24 +117,28 @@ class PurePursuit(Node):
         elif distances[closest_idx] >= self.lookahead:
             # If the closest point is beyond the lookahead distance, interpolate
             # between the car and it to find the goal point.
-            goal_point = relative_positions[closest_idx] * (distances[closest_idx] / self.lookahead)
+            goal_point = relative_positions[closest_idx] * \
+                         (distances[closest_idx] / self.lookahead)
         else:
             # Find the first point that is within the lookahead distance.
-            prev_point = trajectory_points[closest_idx]
             for i in range(closest_idx + 1, len(trajectory_points)):
                 if distances[i] >= self.lookahead:
-                    # Linearly interpolate to find the goal point.
-                    low_point = prev_point
-                    mid_point = trajectory_points[i]
-                    for _ in range(self.interpolation_iterations):
-                        midpoint = (low_point + mid_point) / 2
-                        self.get_logger().info(f"Midpoint: {midpoint}")
-                        if np.isclose(np.linalg.norm(midpoint - position), self.lookahead, atol=0.01):
-                            # Converts midpoint to the vehicle's frame.
-                            goal_point = midpoint - position
-                            break
+                    # Determines the unit vector of the trajectory.
+                    traj: npt.NDArray[np.float] = trajectory_points[i] - trajectory_points[i-1]
+                    traj /= np.linalg.norm(traj)
+                    # Finds the vector of the first point to the vehicle.
+                    p2v: np.float = relative_positions[i-1]
+                    # Parameterized equation of the line to find the goal point.
+                    t: np.float = -2 * (traj * p2v) + np.sqrt(
+                        4 * (traj * p2v) ** 2 - 4 * (distances[i-1] ** 2 - self.lookahead ** 2)
+                    )
+                    # If t is nan due to negative square root, set t to 0.
+                    if np.isnan(t):
+                        t = 0
+
+                    # Get the goal point.
+                    goal_point = trajectory_points[i-1] + t * traj
                     break
-                prev_point = trajectory_points[i]
             # If no points are found, use the last point.
             if goal_point is None:
                 goal_point = relative_positions[-1]
@@ -147,6 +151,7 @@ class PurePursuit(Node):
         gamma: float = 2 * goal_point[1] / (self.lookahead ** 2)
         # Calculate the steering angle.
         steering_angle: float = np.arctan(gamma * self.wheelbase_length)
+        assert np.isnan(steering_angle) == False, "Steering angle is NaN"
         self.get_logger().info(f"Steering angle: {steering_angle}")
         
         # Publish the drive command.
