@@ -68,6 +68,18 @@ class PathPlan(Node):
 
         self.get_logger().info("Path planner initialized")
 
+    def add_margin_to_walls(self, map: OccupancyGrid, margin: float):
+        marginalized_map = map.copy()
+        num_rows, num_cols = map.shape
+        for i in range(num_rows):
+            for j in range(num_cols): 
+                if map[i, j] == 1: # occupied cell 
+                    for k in range (-margin, margin + 1):
+                        for l in range (-margin, margin + 1):
+                            if (0 <= i + k < num_rows) and (0 <= j + l < num_cols):
+                                marginalized_map[i + k, j + l] = 1
+        return marginalized_map
+
     def map_cb(self, msg: OccupancyGrid):
         """Takes the Occupancy Grid of the map and creates an internal representation"""
         # occupied_threshold = 0.65
@@ -81,6 +93,10 @@ class PathPlan(Node):
         # Mark the grid as 1 if its occupancy value is -1
         self.map = (map_data == -1).astype(int)
 
+        # marginalize the walls so that we have some safety distance away from the walls 
+        self.map = self.add_margin_to_walls(self.map, int(np.ceil(1 / self.map_resolution))) 
+
+        self.get_logger().info(f"Map added.")
 
     def pose_cb(self, pose: PoseWithCovarianceStamped):
         """Sets initial pose"""
