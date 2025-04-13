@@ -85,24 +85,31 @@ class PurePursuit(Node):
             relative_positions[:, 0] * np.cos(yaw) - relative_positions[:, 1] * np.sin(yaw),
             relative_positions[:, 0] * np.sin(yaw) + relative_positions[:, 1] * np.cos(yaw)
         ]).T
-        # Only considers trajectory points ahead of the vehicle.
-        ahead_points: npt.NDArray = relative_positions[relative_positions[:, 0] >= 0]
+        # Calculates the distances to each point.
+        distances: npt.NDArray = np.linalg.norm(relative_positions, axis=1)
+        # Replaces the distance of behind points with a large value.
+        distances_ahead: npt.NDArray = np.where(
+            relative_positions[:, 0] > 0,
+            distances,
+            np.inf
+        )
+        # Finds the index of the closest point ahead.
+        closest_idx = np.argmin(distances_ahead)
 
         # Only consider points with positive projection on the heading vector.
         goal_point: npt.NDArray[np.float64] = None
-        if not np.any(ahead_points):
+        if not np.any(relative_positions[:, 0] > 0):
             # If no points are ahead, default to the closest point.
-            goal_point = relative_positions[np.argmin(
-                np.linalg.norm(relative_positions, axis=1)
-            )]
+            goal_point = relative_positions[np.argmin(distances)]
         else:
-            # Use only the points ahead.
-            distances_ahead = np.linalg.norm(ahead_points, axis=1)
-            # Find the index in the filtered array of the point closest to the lookahead distance.
-            # Note: You might also want to compute the index relative to the full trajectory if needed.
-            idx = np.argmin(np.abs(distances_ahead - self.lookahead))
-            # Then use the corresponding global coordinate as the starting point.
-            goal_point = ahead_points[idx]
+            # Find the first point that is within the lookahead distance.
+            for i in range(closest_idx, len(relative_positions)):
+                if relative_positions[i, 0] > self.lookahead:
+                    goal_point = relative_positions[i]
+                    break
+            # If no points are found, use the last point.
+            if goal_point is None:
+                goal_point = relative_positions[-1]
 
         # Fallback if no suitable goal point was found.
         if goal_point is None:
