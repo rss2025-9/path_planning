@@ -62,6 +62,17 @@ class PathPlan(Node):
         self.goal = None
         ##
 
+        # Transformation matrix to convert between map and world
+        x = 25.900000
+        y = 48.500000
+        theta = 3.14
+        self.map_resolution = 0.0504  # make sure this matches the actual map
+        self.transform = np.array([
+            [np.cos(theta), -np.sin(theta), x],
+            [np.sin(theta),  np.cos(theta), y],
+            [0,              0,             1]
+        ])
+
 
     ## given callback funcs implemented
     def map_cb(self, msg):
@@ -74,7 +85,7 @@ class PathPlan(Node):
 
     def goal_cb(self, msg):
         """callback for goal pose. calls the planning to start """
-        self.goal_pose = msg.pose
+        self.goal_pose=msg.pose
         self.get_logger().info("Goal pose received")
         if self.start_pose and self.map is not None: #calls path plan
             self.plan_path(self.start_pose, self.goal_pose)
@@ -94,10 +105,17 @@ class PathPlan(Node):
     ######## my functions below here
 
     def w_to_m(self, x, y):
-        """World coordinates to map pixel indices."""
-        mx=int(np.floor((x - self.map_origin.x) / self.map_resolution))
-        my=int(np.floor((y - self.map_origin.y) / self.map_resolution))
-        return mx, my
+        """World to map index using transform matrix (inverse of the transform)."""
+        point = np.array([x, y, 1.0])
+        pixel = self.transform @ point
+        pixel = pixel / self.map_resolution
+        return int(pixel[1]), int(pixel[0])  # (row, col)
+
+    def map_to_world(self, col, row):
+        """Map index to world coordinates using inverse transform."""
+        pixel = np.array([col * self.map_resolution, row * self.map_resolution, 1.0])
+        point = np.linalg.inv(self.transform) @ pixel
+        return float(point[0]), float(point[1])
 
 
 
@@ -106,7 +124,7 @@ class PathPlan(Node):
         map_x, map_y = self.w_to_m(x, y)
         if 0 <= map_x < self.map.shape[1] and 0 <= map_y < self.map.shape[0]: #checks that the map indices are within bounds of the occupancy grid
             cell=self.map[map_y, map_x] #gets occupancy value: -1 = unknown, 0 = free, 100 = occupied
-            return cell >= 0 and cell<50  #free or low occupancy is okay
+            return cell<50  #free or low occupancy is okay
         return False
 
     
@@ -115,13 +133,15 @@ class PathPlan(Node):
         return math.hypot(pt_1[0]-pt_2[0], pt_1[1]-pt_2[1])
 
     def rand_free(self):
-        """ get rand free point on map"""
+        """Sample a random free point in the map and return it in world coordinates."""
         while True:
-            x=random.uniform(self.map_origin.x, self.map_origin.x+self.map.shape[1]*self.map_resolution)
-            y=random.uniform(self.map_origin.y, self.map_origin.y+self.map.shape[0]*self.map_resolution)
-            
-            if self.is_free(x, y):
+            row = random.randint(0, self.map.shape[0] - 1)
+            col = random.randint(0, self.map.shape[1] - 1)
+
+            if self.map[row, col] >= 0 and self.map[row, col] < 50:
+                x, y = self.map_to_world(col, row)
                 return x, y
+
 
     def steer(self, start, end, step=0.5):
         """ steer from start to end w/ given step """
@@ -147,10 +167,11 @@ class PathPlan(Node):
         self.get_logger().info(f"Start: {start}, Goal: {goal}")
 
         goal_mx, goal_my = self.w_to_m(goal[0], goal[1])
+        self.get_logger().info(f"goal_mx, goal_mx ({goal_mx}, {goal_my})")
        
         #SOMETHING IS WRONG HERE BC WE NEVER GO INSIDE THE IF STATEMENT AND IT SAYS EVERYTHING IS OUT OF MAP BOUNDS
         if 0 <= goal_mx < self.map.shape[1] and 0 <= goal_my < self.map.shape[0]:
-            cell_value = self.map[goal_my, goal_mx]
+            cell_value=self.map[goal_my, goal_mx]
             self.get_logger().info(f"Occupancy at goal cell ({goal_mx}, {goal_my}) = {cell_value}")
         else:
             self.get_logger().warn("Goal is out of map bounds!")
@@ -162,7 +183,7 @@ class PathPlan(Node):
 
         #CHANGE
         tol=0.3 #tolerance of being clsoe enough to goal
-        max_iter=2000
+        max_iter=5000
 
         for _ in range(max_iter):
             rand_free_pt=self.rand_free() #start w random free point
@@ -171,6 +192,7 @@ class PathPlan(Node):
 
 
             if self.is_free(*new_node): #add node only if its free
+                self.get_logger().info("new node free")
                 nodes.append(new_node)
                 parents[new_node]=closest
 
@@ -183,12 +205,13 @@ class PathPlan(Node):
             # Didn't reach goal — try closest node
             closest_to_goal = min(nodes, key=lambda n: self.dist(n, goal))
             self.get_logger().warn("Goal not reached — using closest node instead.")
-            now = closest_to_goal
+            now=closest_to_goal
         else:
-            now = goal
+            now=goal
+            self.get_logger().info(f"Planned {now} waypoints")
 
         #go backwards from goal (or closest) to start to get path
-        path = []
+        path=[]
 
 
         while now is not None:
@@ -201,8 +224,8 @@ class PathPlan(Node):
 
         #write them as poses
         self.trajectory.clear()
-        for x, y in path:
-            self.trajectory.addPoint((x, y))
+        for point in path:
+            self.trajectory.addPoint(point)
 
 
         #publish it
