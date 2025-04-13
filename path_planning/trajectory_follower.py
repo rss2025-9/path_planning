@@ -30,12 +30,10 @@ class PurePursuit(Node):
         self.declare_parameter('lookahead', 0.5)
         self.declare_parameter('speed', 1.0)
         self.declare_parameter('wheelbase_length', 0.3302)
-        self.declare_parameter('interpolation_iterations', 10)
 
         self.lookahead: float = self.get_parameter('lookahead').get_parameter_value().double_value
         self.speed: float = self.get_parameter('speed').get_parameter_value().double_value
         self.wheelbase_length: float = self.get_parameter('wheelbase_length').get_parameter_value().double_value
-        self.interpolation_iterations: int = self.get_parameter('interpolation_iterations').get_parameter_value().integer_value
 
         # Subscribers to the planned path and publishers for the drive command.
         self.trajectory: LineTrajectory = LineTrajectory("/followed_trajectory")
