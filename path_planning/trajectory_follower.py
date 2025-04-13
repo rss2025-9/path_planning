@@ -121,23 +121,23 @@ class PurePursuit(Node):
                          (distances[closest_idx] / self.lookahead)
         else:
             # Find the first point that is within the lookahead distance.
+            self.get_logger().info("####Interpolating through trajectory traversal.####")
             for i in range(closest_idx + 1, len(trajectory_points)):
                 if distances[i] >= self.lookahead:
                     # Determines the unit vector of the trajectory.
                     traj: npt.NDArray[np.float] = trajectory_points[i] - trajectory_points[i-1]
                     traj /= np.linalg.norm(traj)
-                    # Finds the vector of the first point to the vehicle.
-                    p2v: np.float = relative_positions[i-1]
+                    # Finds the unit vector of the first point to the vehicle.
+                    p2v: np.float = relative_positions[i-1] / distances[i]
+                    # Dot product of traj and p2v, to determine distance projection.
+                    delta: npt.NDArray = np.dot(p2v, traj)
                     # Parameterized equation of the line to find the goal point.
-                    t: np.float = -2 * (traj * p2v) + np.sqrt(
-                        4 * (traj * p2v) ** 2 - 4 * (distances[i-1] ** 2 - self.lookahead ** 2)
+                    t: np.float = -2 * delta + np.sqrt(
+                        4 * (delta ** 2 + self.lookahead ** 2 -  1)
                     )
-                    # If t is nan due to negative square root, set t to 0.
-                    if np.isnan(t):
-                        t = 0
-
-                    # Get the goal point.
-                    goal_point = trajectory_points[i-1] + t * traj
+                    # Get the goal point + safety from square root.
+                    goal_point = (relative_positions[i-1] if np.isnan(t)
+                                   else relative_positions[i-1] + t * traj)
                     break
             # If no points are found, use the last point.
             if goal_point is None:
@@ -151,7 +151,6 @@ class PurePursuit(Node):
         gamma: float = 2 * goal_point[1] / (self.lookahead ** 2)
         # Calculate the steering angle.
         steering_angle: float = np.arctan(gamma * self.wheelbase_length)
-        assert np.isnan(steering_angle) == False, "Steering angle is NaN"
         self.get_logger().info(f"Steering angle: {steering_angle}")
         
         # Publish the drive command.
