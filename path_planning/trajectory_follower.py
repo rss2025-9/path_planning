@@ -151,7 +151,6 @@ class PurePursuit(Node):
         gamma: float = 2 * goal_point[1] / (self.lookahead ** 2)
         # Calculate the steering angle.
         steering_angle: float = np.arctan(gamma * self.wheelbase_length)
-        self.get_logger().info(f"Steering angle: {steering_angle}")
         
         # Publish the drive command.
         self.publish_drive_cmd(self.speed, steering_angle)
