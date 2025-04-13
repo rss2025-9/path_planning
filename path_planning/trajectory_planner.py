@@ -10,7 +10,7 @@ import numpy as np
 import heapq
 import math
 
-
+from scipy.ndimage import binary_dilation
 
 class PathPlan(Node):
     """ Listens for goal pose published by RViz and uses it to plan a path from
@@ -26,14 +26,6 @@ class PathPlan(Node):
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.map_topic = self.get_parameter('map_topic').get_parameter_value().string_value
         self.initial_pose_topic = self.get_parameter('initial_pose_topic').get_parameter_value().string_value
-
-        x = 25.900000
-        y = 48.50000
-        theta = 3.14
-        resolution = 0.0504
-        self.transform = np.array([[np.cos(theta), -np.sin(theta), x],
-                    [np.sin(theta), np.cos(theta), y],
-                    [0,0,1]])
 
         self.map_sub = self.create_subscription(
             OccupancyGrid,
@@ -65,24 +57,24 @@ class PathPlan(Node):
 
         self.map = None
         self.start_pose = None
+        x = 25.900000
+        y = 48.50000
+        theta = 3.14
+        self.transform = np.array([[np.cos(theta), -np.sin(theta), x],
+                    [np.sin(theta), np.cos(theta), y],
+                    [0,0,1]])
 
         self.get_logger().info("Path planner initialized")
 
-    def add_margin_to_walls(self, map: OccupancyGrid, margin: float):
-        marginalized_map = map.copy()
-        num_rows, num_cols = map.shape
-        for i in range(num_rows):
-            for j in range(num_cols): 
-                if map[i, j] == 1: # occupied cell 
-                    for k in range (-margin, margin + 1):
-                        for l in range (-margin, margin + 1):
-                            if (0 <= i + k < num_rows) and (0 <= j + l < num_cols):
-                                marginalized_map[i + k, j + l] = 1
-        return marginalized_map
+    def add_margin_to_walls(self, map: np.ndarray, margin: int):
+        structure = np.ones((2 * margin + 1, 2 * margin + 1), dtype=bool)
+        return binary_dilation(map, structure=structure).astype(int)
 
     def map_cb(self, msg: OccupancyGrid):
         """Takes the Occupancy Grid of the map and creates an internal representation"""
         # occupied_threshold = 0.65
+
+        self.get_logger().info("Map received.")
 
         map_width = msg.info.width
         map_height = msg.info.height
@@ -93,8 +85,9 @@ class PathPlan(Node):
         # Mark the grid as 1 if its occupancy value is -1
         self.map = (map_data == -1).astype(int)
 
-        # marginalize the walls so that we have some safety distance away from the walls 
-        self.map = self.add_margin_to_walls(self.map, int(np.ceil(1 / self.map_resolution))) 
+        # marginalize the walls so that we have some safety distance away from the walls
+        buffer_meters = 0.65
+        self.map = self.add_margin_to_walls(self.map, int(np.ceil(buffer_meters / self.map_resolution))) 
 
         self.get_logger().info(f"Map added.")
 
