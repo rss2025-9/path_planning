@@ -83,10 +83,11 @@ class PurePursuit(Node):
         )
         relative_positions: npt.NDArray = trajectory_points - position  # vector from vehicle to each trajectory point
         # Rotates relative positions to the vehicle's frame.
-        relative_positions = np.array([
-            relative_positions[:, 0] * np.cos(yaw) - relative_positions[:, 1] * np.sin(yaw),
-            relative_positions[:, 0] * np.sin(yaw) + relative_positions[:, 1] * np.cos(yaw)
-        ]).T
+        rotation_matrix: npt.NDArray = np.array([
+            [np.cos(yaw), -np.sin(yaw)],
+            [np.sin(yaw), np.cos(yaw)]
+        ])
+        relative_positions = relative_positions @ rotation_matrix.T
         # Calculates the distances to each point.
         distances: npt.NDArray = np.linalg.norm(relative_positions, axis=1)
         # Replaces the distance of behind points with a large value.
