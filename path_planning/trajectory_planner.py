@@ -1,3 +1,8 @@
+#QUESTIONS:
+# 1) line 132 in is_free do we return cell >=0 and cell<0.65
+# 2) why are points not on path 0, -1
+# 3) why are we not seeing any real values for points (always 0 or -1)  
+
 import rclpy
 from rclpy.node import Node
 
@@ -123,9 +128,9 @@ class PathPlan(Node):
         """returns True if world coordinate (x, y) is in free or unknown space (but not occupied)."""
         map_x, map_y = self.w_to_m(x, y)
         if 0 <= map_x < self.map.shape[1] and 0 <= map_y < self.map.shape[0]: #checks that the map indices are within bounds of the occupancy grid
-            cell=self.map[map_y, map_x] #gets occupancy value: -1 = unknown, 0 = free, 100 = occupied
-            return cell<50  #free or low occupancy is okay
-        return False
+            cell=self.map[map_y, map_x] #cell is -1, or real in 0 to 1 
+            return cell<0.65  #return 1
+        return False #return 0
 
     
 
@@ -169,7 +174,6 @@ class PathPlan(Node):
         goal_mx, goal_my = self.w_to_m(goal[0], goal[1])
         self.get_logger().info(f"goal_mx, goal_mx ({goal_mx}, {goal_my})")
        
-        #SOMETHING IS WRONG HERE BC WE NEVER GO INSIDE THE IF STATEMENT AND IT SAYS EVERYTHING IS OUT OF MAP BOUNDS
         if 0 <= goal_mx < self.map.shape[1] and 0 <= goal_my < self.map.shape[0]:
             cell_value=self.map[goal_my, goal_mx]
             self.get_logger().info(f"Occupancy at goal cell ({goal_mx}, {goal_my}) = {cell_value}")
@@ -192,8 +196,14 @@ class PathPlan(Node):
 
 
             if self.is_free(*new_node): #add node only if its free
+                #
                 self.get_logger().info("new node free")
+                newnode_mx, newnode_my = self.w_to_m(new_node[0], new_node[1])
+                cell_value=self.map[newnode_my, newnode_mx]
+                self.get_logger().info(f"Occupancy at new node ({newnode_mx}, {newnode_mx}) = {cell_value}") #should be -1, or 0 to 1
+                #
                 nodes.append(new_node)
+                #self.get_logger().info(f"Nodes: {nodes}")
                 parents[new_node]=closest
 
                 if self.dist(new_node, goal) < tol and self.is_free(*goal): #if close enough to stop and goal free
