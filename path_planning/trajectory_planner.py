@@ -11,7 +11,8 @@ import heapq
 import math
 import time
 
-from scipy.ndimage import binary_dilation
+# from scipy.ndimage import binary_dilation
+from scipy.ndimage import distance_transform_edt
 
 class PathPlan(Node):
     """ Listens for goal pose published by RViz and uses it to plan a path from
@@ -67,9 +68,9 @@ class PathPlan(Node):
 
         self.get_logger().info("Path planner initialized")
 
-    def add_margin_to_walls(self, map: np.ndarray, margin: int):
-        structure = np.ones((2 * margin + 1, 2 * margin + 1), dtype=bool)
-        return binary_dilation(map, structure=structure).astype(int)
+    # def add_margin_to_walls(self, map: np.ndarray, margin: int):
+    #     structure = np.ones((2 * margin + 1, 2 * margin + 1), dtype=bool)
+    #     return binary_dilation(map, structure=structure).astype(int)
 
     def map_cb(self, msg: OccupancyGrid):
         """Takes the Occupancy Grid of the map and creates an internal representation"""
@@ -87,8 +88,11 @@ class PathPlan(Node):
         self.map = (map_data == -1).astype(int)
 
         # marginalize the walls so that we have some safety distance away from the walls
-        buffer_meters = 0.45
-        self.map = self.add_margin_to_walls(self.map, int(np.ceil(buffer_meters / self.map_resolution))) 
+        # buffer_meters = 0.45
+        # self.map = self.add_margin_to_walls(self.map, int(np.ceil(buffer_meters / self.map_resolution)))
+
+        free_space = (self.map == 0)
+        self.distance_map = distance_transform_edt(free_space) * self.map_resolution
 
         self.get_logger().info(f"Map added.")
 
@@ -208,7 +212,15 @@ class PathPlan(Node):
                 return self.reconstruct_path(came_from, start_point, current)
             
             for neighbor in self.get_neighbors(map, current):
-                new_c_cost = c_score[current] + 1   # cost of moving to neighbor
+
+                # add penalty depending on how close the node is to the obstacle
+                distance_to_obstacle = self.distance_map[neighbor[0], neighbor[1]]
+                if distance_to_obstacle < 0.7:  # safety threshold of 0.7 (tune this value)
+                    penalty = (0.7 - distance_to_obstacle) * 10
+                else:
+                    penalty = 0
+
+                new_c_cost = c_score[current] + 1 + penalty  # cost of moving to neighbor
                 if neighbor not in c_score or new_c_cost < c_score[neighbor]:
                     c_score[neighbor] = new_c_cost
                     # f(x) = c(x) + h(x) from lecture
