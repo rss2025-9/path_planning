@@ -9,6 +9,7 @@ from .utils import LineTrajectory
 import numpy as np
 import heapq
 import math
+import time
 
 from scipy.ndimage import binary_dilation
 
@@ -86,7 +87,7 @@ class PathPlan(Node):
         self.map = (map_data == -1).astype(int)
 
         # marginalize the walls so that we have some safety distance away from the walls
-        buffer_meters = 0.65
+        buffer_meters = 0.45
         self.map = self.add_margin_to_walls(self.map, int(np.ceil(buffer_meters / self.map_resolution))) 
 
         self.get_logger().info(f"Map added.")
@@ -110,6 +111,7 @@ class PathPlan(Node):
 
     def plan_path(self, start_point, end_point, map):
 
+        start_time = time.time()
         # In world coordinates
         start_x = start_point.pose.position.x
         start_y = start_point.pose.position.y
@@ -127,6 +129,9 @@ class PathPlan(Node):
             self.get_logger().error("No path found!")
             return
         self.get_logger().info(f"Path found with {len(path)} waypoints.")
+
+        elasped = time.time() - start_time
+        self.get_logger().info(f"Path planning took {elasped:.3f} seconds")
 
         world_coords = []
         for (row, col) in path:
