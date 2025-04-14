@@ -124,10 +124,10 @@ class PathPlan(Node):
 
         start_map = self.world_to_map(start_x, start_y) 
         end_map = self.world_to_map(end_x, end_y)
-        self.get_logger().info(f"Start grid: {start_map}, Map value: {self.map[start_map[0], start_map[1]]}")
-        self.get_logger().info(f"Goal grid: {end_map}, Map value: {self.map[end_map[0], end_map[1]]}")
+        self.get_logger().info(f"Start grid: {start_map}, Map value: {self.map[start_map[1], start_map[0]]}")
+        self.get_logger().info(f"Goal grid: {end_map}, Map value: {self.map[end_map[1], end_map[0]]}")
 
-        path = self.a_star_search(start_map, end_map, map)
+        path = self.a_star_search(start_map, end_map, map)  # returns (y, x)
         # self.get_logger().info(f"Path: {path}")
         if path is None or len(path) == 0:
             self.get_logger().error("No path found!")
@@ -169,9 +169,9 @@ class PathPlan(Node):
         return math.hypot(x, y)
     
     def get_neighbors(self, map, node):
-        (x, y) = node
+        (y, x) = node
         neighbors = []
-        candidates = [(x+1, y), (x-1, y), (x, y+1), (x, y-1)]
+        candidates = [(y+1, x), (y-1, x), (y, x+1), (y, x-1)]
         for candidate in candidates:
             # check if the candidate neighbor is out of the map
             if 0 <= candidate[0] < map.shape[0] and 0 <= candidate[1] < map.shape[1]:
