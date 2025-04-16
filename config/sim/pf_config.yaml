@@ -24,5 +24,9 @@ particle_filter:
 
     # Deterministic flag; set to true to remove all added noise
     deterministic: false
+    # Determines whether we visualize the particle filter.
+    # This is a very expensive operation and should
+    # only be used for debugging
+    optimize_publishes: false
 
     lidar_scale_to_map_scale: 1.0

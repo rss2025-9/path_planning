@@ -58,7 +58,8 @@ class PurePursuit(Node):
         drive_cmd: AckermannDriveStamped = AckermannDriveStamped()
         drive_cmd.drive.speed = speed
         drive_cmd.drive.steering_angle = steering_angle
-        drive_cmd.drive.steering_angle_velocity = 0.0
+        drive_cmd.header.stamp = self.get_clock().now().to_msg()
+        drive_cmd.header.frame_id = "base_link"
         self.drive_pub.publish(drive_cmd)
 
     def pose_callback(self, odometry_msg: Odometry):
