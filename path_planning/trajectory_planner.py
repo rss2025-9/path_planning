@@ -24,10 +24,12 @@ class PathPlan(Node):
         self.declare_parameter('odom_topic', "default")
         self.declare_parameter('map_topic', "default")
         self.declare_parameter('initial_pose_topic', "default")
+        self.declare_parameter('buffer_meters', 1.0)
 
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.map_topic = self.get_parameter('map_topic').get_parameter_value().string_value
         self.initial_pose_topic = self.get_parameter('initial_pose_topic').get_parameter_value().string_value
+        self.buffer_meters = self.get_parameter('buffer_meters').get_parameter_value().double_value
 
         self.map_sub = self.create_subscription(
             OccupancyGrid,
@@ -88,9 +90,6 @@ class PathPlan(Node):
         self.map = (map_data == -1).astype(int)
 
         # marginalize the walls so that we have some safety distance away from the walls
-        # buffer_meters = 0.45
-        # self.map = self.add_margin_to_walls(self.map, int(np.ceil(buffer_meters / self.map_resolution)))
-
         free_space = (self.map == 0)
         self.distance_map = distance_transform_edt(free_space) * self.map_resolution
 
@@ -215,8 +214,8 @@ class PathPlan(Node):
 
                 # add penalty depending on how close the node is to the obstacle
                 distance_to_obstacle = self.distance_map[neighbor[0], neighbor[1]]
-                if distance_to_obstacle < 0.7:  # safety threshold of 0.7 (tune this value)
-                    penalty = (0.7 - distance_to_obstacle) * 10
+                if distance_to_obstacle < self.buffer_meters:  # safety threshold of 0.7 (tune this value)
+                    penalty = (self.buffer_meters - distance_to_obstacle) * 10
                 else:
                     penalty = 0
 
