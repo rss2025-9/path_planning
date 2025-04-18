@@ -149,7 +149,7 @@ class PurePursuit(Node):
         # Calculate the steering angle.
         steering_angle: float = np.arctan(gamma * self.wheelbase_length)
         # Calculates the speed proportional to the gamma.
-        speed: float = max(self.speed * (1 - (np.tanh(np.log(gamma + 1)))), 0.8)
+        speed: float = max(self.speed * (1 - np.abs((np.tanh(np.log(gamma + 1))))), 0.8)
         # Publish the drive command.
         self.publish_drive_cmd(speed, steering_angle)
 
