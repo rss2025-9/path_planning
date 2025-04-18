@@ -1,6 +1,6 @@
 particle_filter:
   ros__parameters:
-    num_particles: 50
+    num_particles: 200
 
     # The number of lidar beams emitted from
     # each particle. This doesn't need to be
@@ -10,7 +10,7 @@ particle_filter:
 
     # The field of view centered around theta=0
     scan_field_of_view: 4.71 # radians
-    noise: 0.08
+    noise: 0.025
 
 
     # Discretize the theta space for faster ray tracing

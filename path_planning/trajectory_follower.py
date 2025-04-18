@@ -77,7 +77,6 @@ class PurePursuit(Node):
 
         # Moves only if the trajectory is initialized, otherwise publish stop.
         if not self.initialized_traj:
-            self.get_logger().warning("Trajectory not initialized yet.")
             self.publish_drive_cmd(0.0, 0.0)
             return
         
@@ -143,15 +142,16 @@ class PurePursuit(Node):
 
         # Rotates the goal point to the vehicle's frame.
         goal_point = goal_point @ rotation_matrix.T
-        self.get_logger().info(f"Goal point: {goal_point}")
 
         # Calculate the curvature 
         gamma: float = 2 * goal_point[1] / (self.lookahead ** 2)
+
         # Calculate the steering angle.
         steering_angle: float = np.arctan(gamma * self.wheelbase_length)
-        
+        # Calculates the speed proportional to the gamma.
+        speed: float = max(self.speed * (1 - (np.tanh(np.log(gamma + 1)))), 0.8)
         # Publish the drive command.
-        self.publish_drive_cmd(self.speed, steering_angle)
+        self.publish_drive_cmd(speed, steering_angle)
 
     def trajectory_callback(self, msg):
         self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
