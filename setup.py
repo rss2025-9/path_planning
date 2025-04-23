@@ -33,7 +33,8 @@ setup(
             'trajectory_loader = path_planning.trajectory_loader:main',
             'trajectory_planner = path_planning.trajectory_planner:main',
             'trajectory_follower = path_planning.trajectory_follower:main',
-            'steering_angle_plotter = path_planning.resource.steering_angle_plotter:main'
+            'steering_angle_plotter = path_planning.resource.steering_angle_plotter:main',
+            'cross_track_error_plotter = path_planning.resource.cross_track_error_plotter:main'
         ],
     },
 )
